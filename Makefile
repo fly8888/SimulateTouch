@@ -1,9 +1,9 @@
 export THEOS_DEVICE_IP = p92
 export ARCHS = armv7 armv7s arm64
 include ${THEOS}/makefiles/common.mk
-export DEBUG = 0
+export DEBUG = 1
 TWEAK_NAME = SimulateTouch
-SimulateTouch_FILES = SimulateTouch.mm common.mm
+SimulateTouch_FILES = SimulateTouch.mm STLibraryServer.mm common.mm
 SimulateTouch_PRIVATE_FRAMEWORKS = GraphicsServices IOKit
 SimulateTouch_LDFLAGS = -lsubstrate -lrocketbootstrap
 

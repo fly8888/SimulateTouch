@@ -1,5 +1,10 @@
+STLogFilePath="/var/www/simulateTouchLog.txt"
+
 chmod 777 /var/www/;
 
 killall -9 backboardd;
 
-rm /var/www/simulateTouchLog.txt;
+if [ -f "$STLogFilePath" ]; then
+    rm $STLogFilePath;
+fi
+

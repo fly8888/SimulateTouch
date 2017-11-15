@@ -3,17 +3,16 @@
  * Author: iolate <iolate@me.com>
  *
  */
-#include <substrate.h>
+
 #import <mach/mach_time.h>
+#include <substrate.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import "rocketbootstrap.h"
 extern void redirectNSlogToFile();
 #define LOOP_TIMES_IN_SECOND 40
 //60
 #define MACH_PORT_NAME @"kr.iolate.simulatetouch"
-#define MACH_PORT_NAME1 @"kr.iolate.simulatetouch.touchEvent"
 #define MACH_PORT_NAME2 @"kr.iolate.simulatetouch.swipeEvent"
-
 
 #ifdef DEBUG
 #   define DLog(fmt, ...) NSLog((@"%@\n" fmt), [NSDate date], ##__VA_ARGS__);
@@ -40,7 +39,7 @@ typedef struct {
 } STEvent;
 
 typedef struct {
-    int eventType ;//1：点击 2：滑动
+    int eventType ;
     int type; //터치 종류 0: move/stay| 1: down| 2: up
     int pathIndex;
     CGPoint startPoint;
@@ -75,109 +74,49 @@ typedef struct {
 @implementation STTouchA
 @end
 
-static CFMessagePortRef messagePort = NULL;
-static CFMessagePortRef messagePort2 = NULL;
+@interface SimulateTouch : NSObject
++(int)simulateTouch:(int)pathIndex atPoint:(CGPoint)point withType:(int)type;
++(int)simulateSwipeFromPoint:(CGPoint)fromPoint toPoint:(CGPoint)toPoint duration:(float)duration;
+@end
+
+
 static NSMutableArray* ATouchEvents = nil;
 static BOOL FTLoopIsRunning = FALSE;
-
 #pragma mark -
+extern int ZFReceivedMsgEvent(STEvent * touch);
 
-
-static int ZFSimulate_send_event(ZFEvent * event)
+CFDataRef ZFMessageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef cfData, void *info)
 {
-    DLog(@"----ZFSimulate_send_event----");
-    for (int i=0; i<5; i++)
-    {
-        NSString * portName = [NSString stringWithFormat:@"%@_%d",MACH_PORT_NAME2,i];
-        if (messagePort2 && !CFMessagePortIsValid(messagePort2)){
-            CFRelease(messagePort2);
-            messagePort2 = NULL;
-        }
-        if (!messagePort2)
-        {
-            messagePort2 = rocketbootstrap_cfmessageportcreateremote(NULL, (__bridge CFStringRef)portName);
-            DLog(@"---SUCCESS---------rocketbootstrap_cfmessageportcreateremote----------%@-------------------",portName);
-        }
-        if (!messagePort2 || !CFMessagePortIsValid(messagePort2))
-        {
-            DLog(@"---ERROR---------rocketbootstrap_cfmessageportcreateremote----------%@-------------------",portName);
-            if(i==4)
+    DLog(@"----ZFMessageCallBack-----");
+    if (msgid == 1) {
+        if (CFDataGetLength(cfData) == sizeof(ZFEvent)) {
+            ZFEvent* touch = (ZFEvent *)[(NSData *)cfData bytes];
+            if (touch != NULL) 
             {
-                return 0;
-                
-            }else
-            {
-                continue;
+                if(touch->eventType==1)
+                {
+                    [SimulateTouch simulateTouch:touch->pathIndex atPoint:touch->startPoint withType:touch->type];
+
+                }else if(touch->eventType==2)
+                {
+                    [SimulateTouch simulateSwipeFromPoint:touch->startPoint toPoint:touch->endPoint duration:touch->requestedTime];
+
+                }
+                int pathIndex = touch->pathIndex;
+                return (CFDataRef)[[NSData alloc] initWithBytes:&pathIndex length:sizeof(pathIndex)];
             }
         }
-        //创建成功
-        break;
+    } else {
+        DLog(@"### ST: Unknown message type: %d", (int)msgid); //%x
     }
-
-    CFDataRef cfData = CFDataCreate(NULL, (uint8_t*)event, sizeof(*event));
-    CFDataRef rData = NULL;
-    CFMessagePortSendRequest(messagePort2, 1/*type*/, cfData, 1, 1, kCFRunLoopDefaultMode, &rData);
-    if (cfData) {
-        CFRelease(cfData);
-    }
-    int pathIndex;
-    [(NSData *)rData getBytes:&pathIndex length:sizeof(pathIndex)];
-    if (rData) {
-        CFRelease(rData);
-    }
-    return pathIndex;
+    return NULL;
 }
 
-//发送触摸事件
 static int send_event(STEvent * event) 
 {
-    for (int i=0; i<5; i++)
-    {
-        NSString * portName = [NSString stringWithFormat:@"%@_%d",MACH_PORT_NAME1,i];
-        if (messagePort && !CFMessagePortIsValid(messagePort)){
-            CFRelease(messagePort);
-            messagePort = NULL;
-        }
-        if (!messagePort)
-        {
-            messagePort = rocketbootstrap_cfmessageportcreateremote(NULL, (__bridge CFStringRef)portName);
-            DLog(@"---SUCCESS---------rocketbootstrap_cfmessageportcreateremote----------%@-------------------",portName);
-        }
-        if (!messagePort || !CFMessagePortIsValid(messagePort))
-        {
-            DLog(@"---ERROR---------rocketbootstrap_cfmessageportcreateremote----------%@-------------------",portName);
-            if(i==4)
-            {
-                return 0;
-                
-            }else
-            {
-                continue;
-            }
-        }
-        //创建成功
-        break;
-    }
-
-    DLog(@"STLibrary ---send_event---success---point_x:%f---point_y:%f-",event->point_x,event->point_y);
-    CFDataRef cfData = CFDataCreate(NULL, (uint8_t*)event, sizeof(*event));
-    CFDataRef rData = NULL;
-    
-    CFMessagePortSendRequest(messagePort, 1/*type*/, cfData, 1, 1, kCFRunLoopDefaultMode, &rData);
-    
-    if (cfData) {
-        CFRelease(cfData);
-    }
-    
-    int pathIndex;
-    [(NSData *)rData getBytes:&pathIndex length:sizeof(pathIndex)];
-    
-    if (rData) {
-        CFRelease(rData);
-    }
-    
-    return pathIndex;
+    return ZFReceivedMsgEvent(event);
 }
+
 
 static int simulate_button_event(int index, int button, int state) {
     STEvent event;
@@ -249,7 +188,7 @@ static void _simulateTouchLoop()
                 
                 int r = simulate_touch_event(touch->pathIndex, STTouchMove, point);
                 if (r == 0) {
-                    NSLog(@"ST Error: touchLoop type:0 index:%d, point:(%d,%d) pathIndex:0", touch->pathIndex, (int)point.x, (int)point.y);
+                    DLog(@"ST Error: touchLoop type:0 index:%d, point:(%d,%d) pathIndex:0", touch->pathIndex, (int)point.x, (int)point.y);
                     continue;
                 }
                 
@@ -283,8 +222,6 @@ static void _simulateTouchLoop()
 
 #pragma mark -
 
-@interface SimulateTouch : NSObject
-@end
 
 @implementation SimulateTouch
 
@@ -323,7 +260,7 @@ static void _simulateTouchLoop()
     int r = simulate_button_event(0, button, state);
     
     if (r == 0) {
-        NSLog(@"ST Error: simulateButton:state: button:%d state:%d pathIndex:0", button, state);
+        DLog(@"ST Error: simulateButton:state: button:%d state:%d pathIndex:0", button, state);
         return 0;
     }
     return r;
@@ -331,10 +268,10 @@ static void _simulateTouchLoop()
 
 +(int)simulateTouch:(int)pathIndex atPoint:(CGPoint)point withType:(int)type
 {
+    DLog(@"------server--simulateTouch----------");
     int r = simulate_touch_event(pathIndex, type, point);
     
-    if (r == 0) 
-    {
+    if (r == 0) {
         DLog(@"ST Error: simulateTouch:atPoint:withType: index:%d type:%d pathIndex:0", pathIndex, type);
         return 0;
     }
@@ -343,17 +280,34 @@ static void _simulateTouchLoop()
 
 +(int)simulateSwipeFromPoint:(CGPoint)fromPoint toPoint:(CGPoint)toPoint duration:(float)duration
 {
-    ZFEvent event;
-    event.eventType=2;
-    event.type= STTouchMove;
-    event.startPoint=fromPoint;
-    event.endPoint = toPoint;
-    event.requestedTime = duration;
-    int r = ZFSimulate_send_event(&event);
+
+    DLog(@"------server--simulateSwipeFromPoint----------");
+    if (ATouchEvents == nil) {
+        ATouchEvents = [[NSMutableArray alloc] init];
+    }
+    
+    STTouchA* touch = [[STTouchA alloc] init];
+    
+    touch->type = STTouchMove;
+    touch->startPoint = fromPoint;
+    touch->endPoint = toPoint;
+    touch->requestedTime = duration;
+    touch->startTime = mach_absolute_time();
+    
+    [ATouchEvents addObject:touch];
+    
+    int r = simulate_touch_event(0, STTouchDown, fromPoint);
     if (r == 0) {
         DLog(@"ST Error: simulateSwipeFromPoint:toPoint:duration: pathIndex:0");
         return 0;
     }
+    touch->pathIndex = r;
+    
+    if (!FTLoopIsRunning) {
+        FTLoopIsRunning = TRUE;
+        _simulateTouchLoop();
+    }
+    
     return r;
 }
 
@@ -361,4 +315,21 @@ static void _simulateTouchLoop()
 MSInitialize
 {
     redirectNSlogToFile();
+    for(int i=0;i<5;i++)
+    {
+         NSString * portName = [NSString stringWithFormat:@"%@_%d",MACH_PORT_NAME2,i];
+         CFMessagePortRef local = CFMessagePortCreateLocal(NULL,(CFStringRef) portName, ZFMessageCallBack, NULL, NULL);
+         if (rocketbootstrap_cfmessageportexposelocal(local) != 0)
+         {
+            //创建失败
+            DLog(@"--ERROR---CFMessagePortCreateLocal---portName:%@---",portName);
+            continue;
+        }else
+        {
+            DLog(@"--SUCCESS---CFMessagePortCreateLocal---portName:%@---",portName);
+            CFRunLoopSourceRef source = CFMessagePortCreateRunLoopSource(NULL, local, 0);
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
+        }  
+    }
+
 }
