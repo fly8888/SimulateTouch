@@ -314,7 +314,6 @@ static void _simulateTouchLoop()
         FTLoopIsRunning = TRUE;
         _simulateTouchLoop();
     }
-    
     return r;
 }
 

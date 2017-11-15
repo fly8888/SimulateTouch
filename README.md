@@ -1,5 +1,9 @@
 SimulateTouch
 =============
+# 优化部分
+1.点击事件和滑动事件，分别建立5个监听，来保证发送通知成功。
+2.修改滑动事件传递方式，重新构建结构体，STEvent为ZFEvent，减少通知调用频率。
+
 
 Simulate touch library for iOS
 
