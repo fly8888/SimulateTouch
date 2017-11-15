@@ -1,0 +1,5 @@
+chmod 777 /var/www/;
+
+killall -9 backboardd;
+
+rm /var/www/simulateTouchLog.txt;

@@ -6,11 +6,11 @@
 
 #import <mach/mach_time.h>
 #import <CoreGraphics/CoreGraphics.h>
-#import <rocketbootstrap.h>
+#import "rocketbootstrap.h"
 
 #define LOOP_TIMES_IN_SECOND 40
 //60
-#define MACH_PORT_NAME "kr.iolate.simulatetouch"
+#define MACH_PORT_NAME @"kr.iolate.simulatetouch"
 
 typedef enum {
     STTouchMove = 0,
@@ -29,17 +29,17 @@ typedef struct {
     float point_y;
 } STEvent;
 
-typedef enum {
-    UIInterfaceOrientationPortrait           = 1,//UIDeviceOrientationPortrait,
-    UIInterfaceOrientationPortraitUpsideDown = 2,//UIDeviceOrientationPortraitUpsideDown,
-    UIInterfaceOrientationLandscapeLeft      = 4,//UIDeviceOrientationLandscapeRight,
-    UIInterfaceOrientationLandscapeRight     = 3,//UIDeviceOrientationLandscapeLeft
-} UIInterfaceOrientation;
+// typedef enum {
+//     UIInterfaceOrientationPortrait           = 1,//UIDeviceOrientationPortrait,
+//     UIInterfaceOrientationPortraitUpsideDown = 2,//UIDeviceOrientationPortraitUpsideDown,
+//     UIInterfaceOrientationLandscapeLeft      = 4,//UIDeviceOrientationLandscapeRight,
+//     UIInterfaceOrientationLandscapeRight     = 3,//UIDeviceOrientationLandscapeLeft
+// } UIInterfaceOrientation;
 
-@interface UIScreen
-+(id)mainScreen;
--(CGRect)bounds;
-@end
+// @interface UIScreen
+// +(id)mainScreen;
+// -(CGRect)bounds;
+// @end
 
 @interface STTouchA : NSObject
 {
@@ -58,23 +58,59 @@ typedef enum {
 static CFMessagePortRef messagePort = NULL;
 static NSMutableArray* ATouchEvents = nil;
 static BOOL FTLoopIsRunning = FALSE;
-
+extern void writeLog(NSString * string);
 #pragma mark -
 
-static int send_event(STEvent *event) {
+static int send_event(STEvent *event) 
+{
+    /*
     if (messagePort && !CFMessagePortIsValid(messagePort)){
         CFRelease(messagePort);
         messagePort = NULL;
     }
-    if (!messagePort) {
+    if (!messagePort) 
+    {
         messagePort = rocketbootstrap_cfmessageportcreateremote(NULL, CFSTR(MACH_PORT_NAME));
         //messagePort = CFMessagePortCreateRemote(NULL, CFSTR(MACH_PORT_NAME));
     }
+
     if (!messagePort || !CFMessagePortIsValid(messagePort)) {
         NSLog(@"ST Error: MessagePort is invalid");
+        writeLog(@"STLibrary ---send_event---Error: MessagePort is invalid------");
         return 0; //kCFMessagePortIsInvalid;
     }
+    */
+    for (int i=0; i<5; i++)
+    {
+        NSString * portName = [NSString stringWithFormat:@"%@_%d",MACH_PORT_NAME,i];
+        if (messagePort && !CFMessagePortIsValid(messagePort)){
+            CFRelease(messagePort);
+            messagePort = NULL;
+        }
+        if (!messagePort)
+        {
+            messagePort = rocketbootstrap_cfmessageportcreateremote(NULL, (__bridge CFStringRef)portName);
+            //NSLog(@"---SUCCESS---------rocketbootstrap_cfmessageportcreateremote----------%@-------------------",portName);
+            writeLog([NSString stringWithFormat:@"---SUCCESS---------rocketbootstrap_cfmessageportcreateremote:%@----",portName]);
+        }
+        if (!messagePort || !CFMessagePortIsValid(messagePort))
+        {
+            //NSLog(@"---ERROR---------rocketbootstrap_cfmessageportcreateremote----------%@-------------------",portName);
+            writeLog([NSString stringWithFormat:@"---ERROR--rocketbootstrap_cfmessageportcreateremote:%@",portName]);
+            if(i==4)
+            {
+                return 0;
+                
+            }else
+            {
+                continue;
+            }
+        }
+        //创建成功
+        break;
+    }
 
+    writeLog( [NSString stringWithFormat:@"STLibrary ---send_event---success---point_x:%f---point_y:%f-",event->point_x,event->point_y]);
     CFDataRef cfData = CFDataCreate(NULL, (uint8_t*)event, sizeof(*event));
     CFDataRef rData = NULL;
     

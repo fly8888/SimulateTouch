@@ -19,7 +19,7 @@
 #import "private-headers/IOKit/hid/IOHIDEventTypes7.h"
 #import "private-headers/IOKit/hid/IOHIDEventSystemConnection.h"
 
-#import <rocketbootstrap.h>
+#import "rocketbootstrap.h"
 
 #pragma mark - Common declaration
 
@@ -88,7 +88,7 @@ static BOOL iOS7 = NO;
 @end
 
 #define Int2String(i) [NSString stringWithFormat:@"%d", i]
-
+extern void writeLog(NSString * string);
 #pragma mark - Implementation
 /*
 MSHook(IOHIDEventRef, IOHIDEventCreateDigitizerEvent, CFAllocatorRef allocator, AbsoluteTime timeStamp, IOHIDDigitizerTransducerType type,
@@ -303,7 +303,9 @@ typedef struct {
 
 static CFDataRef messageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef cfData, void *info)
 {
-    DLog(@"### ST: Receive Message Id: %d", (int)msgid);
+    DLog(@"-------------### ST: Receive Message Id: %d", (int)msgid);
+    NSString * str =[NSString stringWithFormat:@"---messageCallBack---### ST: Receive Message Id: %d", (int)msgid];
+    writeLog(str);
     if (msgid == 1) {
         if (CFDataGetLength(cfData) == sizeof(STEvent)) {
             STEvent* touch = (STEvent *)[(NSData *)cfData bytes];
@@ -322,6 +324,8 @@ static CFDataRef messageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef
                 }
                 
                 int pathIndex = touch->index;
+
+                writeLog([NSString stringWithFormat:@"### ST: Received Path Index: %d", pathIndex]);
                 DLog(@"### ST: Received Path Index: %d", pathIndex);
                 if (pathIndex == 0) {
                     pathIndex = getExtraIndexNumber();
@@ -332,12 +336,15 @@ static CFDataRef messageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef
                 return (CFDataRef)[[NSData alloc] initWithBytes:&pathIndex length:sizeof(pathIndex)];
             }else{
                 DLog(@"### ST: Received STEvent is nil");
+                writeLog(@"### ST: Received STEvent is nil");
                 return NULL;
             }
         }
         DLog(@"### ST: Received data is not STEvent. event size: %lu received size: %lu", sizeof(STEvent), CFDataGetLength(cfData));
+        writeLog([NSString stringWithFormat:@"### ST: Received data is not STEvent. event size: %lu received size: %lu", sizeof(STEvent), CFDataGetLength(cfData)]);
     } else {
         NSLog(@"### ST: Unknown message type: %d", (int)msgid); //%x
+        writeLog([NSString stringWithFormat:@"### ST: Unknown message type: %d", (int)msgid]);
     }
     
     return NULL;
@@ -345,7 +352,8 @@ static CFDataRef messageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef
 
 #pragma mark - MSInitialize
 
-#define MACH_PORT_NAME "kr.iolate.simulatetouch"
+#define MACH_PORT_NAME @"kr.iolate.simulatetouch"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -371,15 +379,40 @@ MSInitialize {
     }
     //MSHookFunction(&IOHIDEventCreateDigitizerEvent, MSHake(IOHIDEventCreateDigitizerEvent));
     //MSHookFunction(&IOHIDEventCreateDigitizerFingerEventWithQuality, MSHake(IOHIDEventCreateDigitizerFingerEventWithQuality));
-    
+
+    /*
     CFMessagePortRef local = CFMessagePortCreateLocal(NULL, CFSTR(MACH_PORT_NAME), messageCallBack, NULL, NULL);
     if (rocketbootstrap_cfmessageportexposelocal(local) != 0) {
         NSLog(@"### ST: RocketBootstrap failed");
+        writeLog([NSString stringWithFormat:@"--Error---SimulateTouch ---CFMessagePortCreateLocal-failed--port:%d",(int)rocketbootstrap_cfmessageportexposelocal(local)]);
         return;
     }
-    
+    for(int i=0;i<5;i++)
+    {
+        NSString * 
+    }
     CFRunLoopSourceRef source = CFMessagePortCreateRunLoopSource(NULL, local, 0);
     CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
-
     NSLog(@"### ST: Mach port initialized successfully.");
+    writeLog([NSString stringWithFormat:@"### ST: Mach port initialized successfully.----port:%d",(int)rocketbootstrap_cfmessageportexposelocal(local)]);
+    */
+
+    for(int i=0;i<5;i++)
+    {
+         NSString * portName = [NSString stringWithFormat:@"%@_%d",MACH_PORT_NAME,i];
+         CFMessagePortRef local = CFMessagePortCreateLocal(NULL,(CFStringRef) portName, messageCallBack, NULL, NULL);
+         if (rocketbootstrap_cfmessageportexposelocal(local) != 0)
+         {
+            //创建失败
+            NSLog(@"--ERROR---CFMessagePortCreateLocal---portName:%@---",portName);
+            writeLog([NSString stringWithFormat:@"--Error---SimulateTouch ---CFMessagePortCreateLocal-failed--port:%d",(int)rocketbootstrap_cfmessageportexposelocal(local)]);
+            continue;
+        }else
+        {
+            NSLog(@"--SUCCESS---CFMessagePortCreateLocal---portName:%@---",portName);
+            writeLog([NSString stringWithFormat:@"### ST: Mach port initialized successfully.----port:%d",(int)rocketbootstrap_cfmessageportexposelocal(local)]);
+            CFRunLoopSourceRef source = CFMessagePortCreateRunLoopSource(NULL, local, 0);
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
+        }  
+    }
 }
