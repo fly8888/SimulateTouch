@@ -14,12 +14,8 @@ extern void redirectNSlogToFile();
 #define MACH_PORT_NAME1 @"kr.iolate.simulatetouch.touchEvent"
 #define MACH_PORT_NAME2 @"kr.iolate.simulatetouch.swipeEvent"
 
+#import "Pch.h"
 
-#ifdef DEBUG
-#   define DLog(fmt, ...) NSLog((@"%@\n" fmt), [NSDate date], ##__VA_ARGS__);
-#else
-#   define DLog(...)
-#endif
 
 
 typedef enum {

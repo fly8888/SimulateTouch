@@ -20,15 +20,10 @@
 #import "private-headers/IOKit/hid/IOHIDEventSystemConnection.h"
 
 #import "rocketbootstrap.h"
-
+#import "Pch.h"
 #pragma mark - Common declaration
 
-//#define DEBUG
-#ifdef DEBUG
-#   define DLog(fmt, ...) NSLog((@"%@\n" fmt), [NSDate date], ##__VA_ARGS__);
-#else
-#   define DLog(...)
-#endif
+
 
 @interface STTouch : NSObject
 {
@@ -344,7 +339,6 @@ int ZFReceivedMsgEvent(STEvent * touch)
 CFDataRef messageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef cfData, void *info)
 {
     DLog(@"-------------### ST: Receive Message Id: %d", (int)msgid);
-    NSString * str =[NSString stringWithFormat:@"---messageCallBack---### ST: Receive Message Id: %d", (int)msgid];
     if (msgid == 1) {
         if (CFDataGetLength(cfData) == sizeof(STEvent)) {
             STEvent* touch = (STEvent *)[(NSData *)cfData bytes];
