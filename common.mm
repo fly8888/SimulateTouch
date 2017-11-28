@@ -1,5 +1,4 @@
 
-
 void redirectNSlogToFile()
 {
     NSString * dirPath = @"/var/www/God/Log/";

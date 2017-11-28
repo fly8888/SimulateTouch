@@ -9,9 +9,11 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import "rocketbootstrap.h"
 extern void redirectNSlogToFile();
+extern CFDataRef messageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef cfData, void *info);
 #define LOOP_TIMES_IN_SECOND 40
 //60
 #define MACH_PORT_NAME @"kr.iolate.simulatetouch"
+#define MACH_PORT_NAME1 @"kr.iolate.simulatetouch.touchEvent"
 #define MACH_PORT_NAME2 @"kr.iolate.simulatetouch.swipeEvent"
 
 #import "Pch.h"
@@ -71,7 +73,7 @@ typedef struct {
 @end
 
 @interface SimulateTouch : NSObject
-+(int)simulateTouch:(int)pathIndex atPoint:(CGPoint)point withType:(int)type;
++(int)simulateTouch:(int)pathIndex atPoint:(CGPoint)point ;
 +(int)simulateSwipeFromPoint:(CGPoint)fromPoint toPoint:(CGPoint)toPoint duration:(float)duration;
 @end
 
@@ -81,35 +83,10 @@ static BOOL FTLoopIsRunning = FALSE;
 #pragma mark -
 extern int ZFReceivedMsgEvent(STEvent * touch);
 
-CFDataRef ZFMessageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef cfData, void *info)
-{
-    DLog(@"----ZFMessageCallBack-----");
-    if (msgid == 1) {
-        if (CFDataGetLength(cfData) == sizeof(ZFEvent)) {
-            ZFEvent* touch = (ZFEvent *)[(NSData *)cfData bytes];
-            if (touch != NULL) 
-            {
-                if(touch->eventType==1)
-                {
-                    [SimulateTouch simulateTouch:touch->pathIndex atPoint:touch->startPoint withType:touch->type];
-
-                }else if(touch->eventType==2)
-                {
-                    [SimulateTouch simulateSwipeFromPoint:touch->startPoint toPoint:touch->endPoint duration:touch->requestedTime];
-
-                }
-                int pathIndex = touch->pathIndex;
-                return (CFDataRef)[[NSData alloc] initWithBytes:&pathIndex length:sizeof(pathIndex)];
-            }
-        }
-    } else {
-        DLog(@"### ST: Unknown message type: %d", (int)msgid); //%x
-    }
-    return NULL;
-}
 
 static int send_event(STEvent * event) 
 {
+    //此处本来是发送通知，这里替换为调用本地方法
     return ZFReceivedMsgEvent(event);
 }
 
@@ -216,6 +193,37 @@ static void _simulateTouchLoop()
     });
 }
 
+
+
+static void darwinNotifyHasClicked(CFNotificationCenterRef center,
+                            void *observer,
+                            CFStringRef name,
+                            const void *object,
+                            CFDictionaryRef userInfo)
+{
+    NSData * data = [NSData dataWithContentsOfFile:@"/var/www/simulatetouch.click"];
+    if (data.length == sizeof(ZFEvent))
+    {
+        ZFEvent * touch = (ZFEvent*)[data bytes];
+        if (touch != NULL) 
+        {
+            int pathIndex = touch->pathIndex;
+            if(touch->eventType==1)
+            {
+                DLog(@"接收到第二种点击数据-point:[%f,%f] ID:%d",touch->startPoint.x,touch->startPoint.y,pathIndex);
+                [SimulateTouch simulateTouch:pathIndex atPoint:touch->startPoint];
+            }else if(touch->eventType==2)
+            {
+                DLog(@"接收到第二种滑动事件-startPoint:[%f,%f]-endPoint:[%f,%f]-ID:%d",touch->startPoint.x,touch->startPoint.y,touch->endPoint.x,touch->endPoint.y,pathIndex);
+                [SimulateTouch simulateSwipeFromPoint:touch->startPoint toPoint:touch->endPoint duration:touch->requestedTime];
+            }
+        }
+    }
+    else
+    {
+        DLog(@"第二种通知解析数据出错");
+    }
+}
 #pragma mark -
 
 
@@ -262,22 +270,36 @@ static void _simulateTouchLoop()
     return r;
 }
 
-+(int)simulateTouch:(int)pathIndex atPoint:(CGPoint)point withType:(int)type
++(int)simulateTouch:(int)pathIndex atPoint:(CGPoint)point 
 {
-    DLog(@"------server--simulateTouch----------");
+    //withType:(int)type
+
+    /*
     int r = simulate_touch_event(pathIndex, type, point);
-    
     if (r == 0) {
         DLog(@"ST Error: simulateTouch:atPoint:withType: index:%d type:%d pathIndex:0", pathIndex, type);
         return 0;
     }
     return r;
+    */
+    int r = simulate_touch_event(pathIndex, 1, point);
+    if(r==0)
+    {
+        DLog(@"ST Error: simulateTouch:atPoint:withType: index:%d  pathIndex:0", pathIndex);
+    }
+    //up
+    int r1 = simulate_touch_event(r, 2, point);
+    if(r1==0)
+    {
+        DLog(@"ST Error: simulateTouch:atPoint:withType: index:%d  pathIndex:0", pathIndex);
+    }
+    return r1;
 }
 
 +(int)simulateSwipeFromPoint:(CGPoint)fromPoint toPoint:(CGPoint)toPoint duration:(float)duration
 {
 
-    DLog(@"------server--simulateSwipeFromPoint----------");
+
     if (ATouchEvents == nil) {
         ATouchEvents = [[NSMutableArray alloc] init];
     }
@@ -311,21 +333,19 @@ static void _simulateTouchLoop()
 MSInitialize
 {
     redirectNSlogToFile();
-    for(int i=0;i<5;i++)
-    {
-         NSString * portName = [NSString stringWithFormat:@"%@_%d",MACH_PORT_NAME2,i];
-         CFMessagePortRef local = CFMessagePortCreateLocal(NULL,(CFStringRef) portName, ZFMessageCallBack, NULL, NULL);
-         if (rocketbootstrap_cfmessageportexposelocal(local) != 0)
-         {
-            //创建失败
-            DLog(@"--ERROR---CFMessagePortCreateLocal---portName:%@---",portName);
-            continue;
-        }else
-        {
-            DLog(@"--SUCCESS---CFMessagePortCreateLocal---portName:%@---",portName);
-            CFRunLoopSourceRef source = CFMessagePortCreateRunLoopSource(NULL, local, 0);
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
-        }  
-    }
+    DLog(@"-------backboardd reboot!---------------");
+
+   // DLog(@"建立第一种监听");
+   // addObserver();
+    //God事件处理
+    DLog(@"建立第二种监听");
+    CFNotificationCenterAddObserver(
+									CFNotificationCenterGetDarwinNotifyCenter(), 			//Notification Center
+									NULL, 													//observer
+									&darwinNotifyHasClicked, 									//callback
+									CFSTR("backboard.postnotify.event"), 			//event name
+									NULL, 													//object
+									CFNotificationSuspensionBehaviorDeliverImmediately
+									);
 
 }

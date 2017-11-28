@@ -1,6 +1,16 @@
+#!/bin/bash
+
+STLogDirPath="/var/www/God/"
 STLogFilePath="/var/www/simulateTouchLog.txt"
 
+chown mobile:mobile /var/www/;
 chmod 777 /var/www/;
+
+if [ -d "$STLogDirPath" ]; then 
+    chown mobile:mobile /var/www/God/;
+    chmod 777 /var/www/God/;
+fi 
+
 
 killall -9 backboardd;
 

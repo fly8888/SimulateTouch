@@ -126,16 +126,26 @@ static int getExtraIndexNumber()
     r += 1; //except 0
     
     NSString* pin = Int2String(r);
-    
-    if ([[STTouches allKeys] containsObject:pin]) {
+    if([[STTouches allKeys] count]==14)
+    {
+        [STTouches removeAllObjects];
+        DLog(@"### ST: --ERROR: [STTouches] Alrady Has 14 Values . All Vallues Will Be Removed , It Maybe Make Something Wrong !--");
+    }
+    if([[STTouches allKeys] containsObject:pin]) 
+    {
         return getExtraIndexNumber();
-    }else{
+    }else
+    {
         return r;
     }
 }
 
 static void SimulateTouchEvent(mach_port_t port, int pathIndex, int type, CGPoint touchPoint) {
-    if (pathIndex == 0) return;
+    if (pathIndex == 0) 
+    {
+        DLog(@"### ST: --ERROR:--PathIndex:0--");
+        return;
+    };
     
     STTouch* touch = [STTouches objectForKey:Int2String(pathIndex)] ?: [[STTouch alloc] init];
     
@@ -167,7 +177,9 @@ static void SendTouchesEvent(mach_port_t port) {
     
     int touchCount = [[STTouches allKeys] count];
     
-    if (touchCount == 0) {
+    if (touchCount == 0) 
+    {
+        DLog(@"ERROR: SendTouchesEvent STTouches Has No Value !");
         return;
     }
     
@@ -197,7 +209,6 @@ static void SendTouchesEvent(mach_port_t port) {
         STTouch* touch = [STTouches objectForKey:pIndex];
         int touchType = touch->type;
         
-        DLog(@"### touchType:%d", touchType);
         if (touchType < 3) { // Less than STButtonUp - see STLibrary.mm's STTouchType
             int eventM = (touchType == 0) ? kIOHIDDigitizerEventPosition : (kIOHIDDigitizerEventRange | kIOHIDDigitizerEventTouch); //Originally, 0, 1 and 2 are used too...
             int touch_ = (touchType == 2) ? 0 : 1;
@@ -251,7 +262,7 @@ static void SendTouchesEvent(mach_port_t port) {
             // This is a button event, not a touch event.
             int state  = touchType - 3; // 3 == STButtonUp - see STLibrary.mm's STTouchType
             int button = (int)touch->point.x;
-            DLog(@"### button:%d state:%d", button, state);
+
             
             int hidButton = kHIDUsage_Csmr_Power;
             if (button == 1) hidButton = kHIDUsage_Csmr_Menu;
@@ -307,7 +318,6 @@ typedef struct {
 
 int ZFReceivedMsgEvent(STEvent * touch)
 {
-
     if (touch != NULL)
     {
         unsigned int port = 0;
@@ -326,6 +336,15 @@ int ZFReceivedMsgEvent(STEvent * touch)
         {
             pathIndex = getExtraIndexNumber();
         }
+        if(touch->type == 8)
+        {
+            //touch
+            SimulateTouchEvent(port, pathIndex, 1, POINT(touch));
+            //up
+            SimulateTouchEvent(port, pathIndex, 2, POINT(touch));
+            return pathIndex;
+        }
+        DLog(@"### ST: ZFReceivedMsgEvent Send SimulateTouchEvent Point:[%f,%f] Type:%d ",touch->point_x,touch->point_y,touch->type);
         SimulateTouchEvent(port, pathIndex, touch->type, POINT(touch));
         return pathIndex;
         
@@ -336,48 +355,8 @@ int ZFReceivedMsgEvent(STEvent * touch)
     return 0;
 }
 
-CFDataRef messageCallBack(CFMessagePortRef local, SInt32 msgid, CFDataRef cfData, void *info)
-{
-    DLog(@"-------------### ST: Receive Message Id: %d", (int)msgid);
-    if (msgid == 1) {
-        if (CFDataGetLength(cfData) == sizeof(STEvent)) {
-            STEvent* touch = (STEvent *)[(NSData *)cfData bytes];
-            if (touch != NULL) {
-                
-                unsigned int port = 0;
-                if (iOS7) {
-                    id display = [[objc_getClass("CAWindowServer") serverIfRunning] displayWithName:@"LCD"];
-                    unsigned int contextId = [display contextIdAtPosition:POINT(touch)];
-                    port = [display taskPortOfContextId:contextId];
-                    
-                    if (lastPort && lastPort != port) {
-                        [STTouches removeAllObjects];
-                    }
-                    lastPort = port;
-                }
-                
-                int pathIndex = touch->index;
 
-                DLog(@"### ST: Received Path Index: %d", pathIndex);
-                if (pathIndex == 0) {
-                    pathIndex = getExtraIndexNumber();
-                }
-                
-                SimulateTouchEvent(port, pathIndex, touch->type, POINT(touch));
-                
-                return (CFDataRef)[[NSData alloc] initWithBytes:&pathIndex length:sizeof(pathIndex)];
-            }else{
-                DLog(@"### ST: Received STEvent is nil");
-                return NULL;
-            }
-        }
-        DLog(@"### ST: Received data is not STEvent. event size: %lu received size: %lu", sizeof(STEvent), CFDataGetLength(cfData));
-    } else {
-        DLog(@"### ST: Unknown message type: %d", (int)msgid); //%x
-    }
-    
-    return NULL;
-}
+
 
 #pragma mark - MSInitialize
 
@@ -397,6 +376,7 @@ extern "C" {
 #endif
 
 MSInitialize {
+    
     STTouches = [[NSMutableDictionary alloc] init];
     
     if (objc_getClass("BKHIDSystemInterface")) {
@@ -408,34 +388,5 @@ MSInitialize {
     }
     //MSHookFunction(&IOHIDEventCreateDigitizerEvent, MSHake(IOHIDEventCreateDigitizerEvent));
     //MSHookFunction(&IOHIDEventCreateDigitizerFingerEventWithQuality, MSHake(IOHIDEventCreateDigitizerFingerEventWithQuality));
-
-    
-    // CFMessagePortRef local = CFMessagePortCreateLocal(NULL, CFSTR("zff.simulatetouch.test.touch"), messageCallBack, NULL, NULL);
-    // if (rocketbootstrap_cfmessageportexposelocal(local) != 0) {
-    //     NSLog(@"### ST: RocketBootstrap failed");
-    //     return;
-    // }
-  
-    // CFRunLoopSourceRef source = CFMessagePortCreateRunLoopSource(NULL, local, 0);
-    // CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
-    //NSLog(@"### ST: Mach port initialized successfully.");
-    
-
-    for(int i=0;i<5;i++)
-    {
-         NSString * portName = [NSString stringWithFormat:@"%@_%d",MACH_PORT_NAME1,i];
-         CFMessagePortRef local = CFMessagePortCreateLocal(NULL,(CFStringRef) portName, messageCallBack, NULL, NULL);
-         if (rocketbootstrap_cfmessageportexposelocal(local) != 0)
-         {
-            //创建失败
-            NSLog(@"--ERROR---CFMessagePortCreateLocal---portName:%@---",portName);
-            continue;
-        }else
-        {
-            NSLog(@"--SUCCESS---CFMessagePortCreateLocal---portName:%@---",portName);
-            CFRunLoopSourceRef source = CFMessagePortCreateRunLoopSource(NULL, local, 0);
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
-        }  
-    }
 
 }
